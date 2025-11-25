@@ -108,81 +108,6 @@ scripts_setup() {
   IFS="$old_IFS"
 }
 
-gh_deb_download_old() {
-  local repo="$1"
-  local token="$2"
-  local api_base="https://api.github.com"
-  local release_json
-  local etag_dir="$SCRIPT_DIR/.etag"
-  mkdir -p "$etag_dir"
-  local base="$(echo -n "$repo" | tr '/' '_')"
-  local etag_file="$etag_dir/$base.etag"
-  local cache_json="$etag_dir/$base.json"
-  local hdr="$(mktemp)"
-  local body="$(mktemp)"
-  local etag_header=()
-  [[ -f "$etag_file" ]] && etag_header=(-H "If-None-Match: $(cat "$etag_file")")
-  local code
-  code=$(curl -sS \
-      -D "$hdr" \
-      -w "%{http_code}" \
-      -o "$body" \
-      -H "User-Agent: $SCRIPT_TITLE/$SCRIPT_VERSION" \
-      -H "Accept: application/vnd.github+json" \
-      -H "X-GitHub-Api-Version: 2022-11-28" \
-      ${token:+-H} ${token:+"Authorization: Bearer $token"} \
-      "${etag_header[@]}" \
-      "$api_base/repos/$repo/releases/latest")
-  if [[ "$code" == "304" ]]; then
-    rm -f "$hdr" "$body"
-    if [[ -f "$cache_json" ]]; then
-      release_json="$(cat "$cache_json")"
-    else
-      release_json="$(curl -fsL \
-        -H "User-Agent: $SCRIPT_TITLE/$SCRIPT_VERSION" \
-        -H "Accept: application/vnd.github+json" \
-        -H "X-GitHub-Api-Version: 2022-11-28" \
-        ${token:+-H} ${token:+"Authorization: Bearer $token"} \
-        "$api_base/repos/$repo/releases/latest")" || handle_error "1" "Could not receive release for repo $repo"
-    fi
-  else
-    if [[ "$code" != "200" ]]; then
-      rm -f "$hdr" "$body"
-      handle_error "1" "Could not receive release for repo $repo (HTTP $code)"
-    fi
-    if grep -qi '^etag:' "$hdr"; then
-      sed -n 's/^[eE][tT][aA][gG]: *//p' "$hdr" | tr -d '\r' > "$etag_file"
-    fi
-    release_json="$(cat "$body")"
-    echo "$release_json" > "$cache_json"
-    rm -f "$hdr" "$body"
-  fi
-  mapfile -t asset_lines < <(
-    printf "%s\n" "$release_json" |
-    jq -r '.assets[]? | select(.name|endswith(".deb")) | "\(.id)\t\(.name)\t\(.browser_download_url // "")"'
-  )
-  [[ ${#asset_lines[@]} -eq 0 ]] && handle_error "1" "Could not find any .deb-assets in repo $repo"
-  for line in "${asset_lines[@]}"; do
-    local id="${line%%$'\t'*}"
-    local rest="${line#*$'\t'}"
-    local name="${rest%%$'\t'*}"
-    local url="${rest#*$'\t'}"
-    echo "Download: $repo → $name"
-    if [[ -n "$url" ]] && curl -fsL \
-       -H "User-Agent: $SCRIPT_TITLE/$SCRIPT_VERSION" \
-       "$url" -o "$SCRIPT_DIR/$name"; then
-      continue
-    fi
-    curl -fsL \
-      -H "User-Agent: $SCRIPT_TITLE/$SCRIPT_VERSION" \
-      -H "Accept: application/octet-stream" \
-      -H "X-GitHub-Api-Version: 2022-11-28" \
-      ${token:+-H} ${token:+"Authorization: Bearer $token"} \
-      "$api_base/repos/$repo/releases/assets/$id" \
-      -o "$SCRIPT_DIR/$name" || handle_error "1" "Download error: $name"
-  done
-}
-
 gh_deb_download() {
   local repo="$1"
   local token="$2"
@@ -347,9 +272,11 @@ function cmd_print_help() {
   echo "Usage: $SCRIPT_NAME [OPTION]"
   echo "$SCRIPT_TITLE v$SCRIPT_VERSION"
   echo " "
-  echo "runs all installer scripts that ends with '-installer.sh'"
-  echo "and debian installer packages (.deb)"
-  echo "in the same directory as this script"
+  echo "A lightweight shell script to automatically run installer"
+  echo "scripts and download/install '.deb' packages from GitHub Releases."
+  echo "The script looks for files in the same directory, executes"
+  echo "'*-installer.sh' scripts (except itself) and installs any"
+  echo "'.deb' files found."
   echo " "
   echo "-i, --install           install all scripts and packages"
   echo "-d, --deinstall         deinstall all scripts and packages"
