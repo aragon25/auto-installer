@@ -178,7 +178,7 @@ gh_deb_download() {
         continue
       fi
     fi
-    echo "Download: $repo → $name"
+    [[ -z "$quiet" ]] && echo "Download: $repo → $name"
     if [[ -n "$url" ]] && curl -fsL \
        -H "User-Agent: $SCRIPT_TITLE/$SCRIPT_VERSION" \
        "$url" -o "$dest"; then
