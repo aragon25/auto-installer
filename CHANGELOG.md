@@ -6,14 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - verbose mode
+- preinst.sh/postinst.sh and prerm.sh/postrm.sh scripts
 
 ### Changed
 - less output in normal mode
-- run order (1: download, 2: deb package install, 3: script install)
-  now scripts can be used to configure installed deb packages.
 
 ### Fixed
 - quiet mode is now really quiet
+
+### Removed
+- '-installer.sh' scripts support
 
 ## [1.0] - 2025-11-25
 

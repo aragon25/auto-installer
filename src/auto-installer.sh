@@ -109,7 +109,7 @@ scripts_setup() {
   local test
   local old_IFS="$IFS"
   IFS=$'\n'
-  test=($(find "$SCRIPT_DIR" -maxdepth 1 -type f -name "*-installer.sh" 2>/dev/null))
+  test=($(find "$SCRIPT_DIR" -maxdepth 1 -type f -name "*$1.sh" 2>/dev/null))
   if [ "${#test[@]}" != "0" ]; then
     for entry in "${test[@]}"; do
       [[ "$entry" -ef "$SCRIPT_PATH" ]] && continue
@@ -121,7 +121,7 @@ scripts_setup() {
       fi
       if [[ "$filetype" =~ "executable" ]] || [[ "$filetype" =~ "script" ]] || [[ "$entry" == *".sh" ]]; then
         chmod -f 755 "$entry"
-        "$entry" $1 $quiet $force $verbose
+        "$entry" $quiet $force $verbose
       fi
     done
   fi
@@ -311,15 +311,17 @@ deb_setup() {
 }
 
 function cmd_install() {
+  scripts_setup preinst
   github_download
   deb_setup
-  scripts_setup
+  scripts_setup postinst
 }
 
 function cmd_deinstall() {
+  scripts_setup prerm
   github_download
   deb_setup -d
-  scripts_setup -d
+  scripts_setup postrm
 }
 
 function cmd_print_version() {
@@ -331,16 +333,19 @@ function cmd_print_help() {
   echo "$SCRIPT_TITLE v$SCRIPT_VERSION"
   echo " "
   echo "A lightweight shell script to automatically run installer"
-  echo "scripts and download/install '.deb' packages from GitHub Releases."
-  echo "The script looks for files in the same directory, executes"
-  echo "'*-installer.sh' scripts (except itself) and installs any"
-  echo "'.deb' files found."
+  echo "scripts and install or deinstall '.deb' packages from"
+  echo "the script directory and/or GitHub Releases."
+  echo "The script looks for files in the same directory, then:"
+  echo "- run '*preinst.sh'/'*prerm.sh' scripts"
+  echo "- download '.deb' files from GitHub Releases (from 'github.conf')"
+  echo "- de-/install '.deb' files found in the script directory"
+  echo "- run '*postinst.sh'/'*postrm.sh' scripts"
   echo " "
-  echo "-i, --install           install all scripts and packages"
-  echo "-d, --deinstall         deinstall all scripts and packages"
-  echo "-f, --force             force deinstall or reinstall all scripts and packages"
-  echo "-q, --quiet             do not print informations while de/installation"
-  echo "-V, --verbose           print detailed information during de/installation"
+  echo "-i, --install           run scripts and install all packages"
+  echo "-d, --deinstall         run scripts and deinstall all packages"
+  echo "-f, --force             force deinstall or reinstall packages"
+  echo "-q, --quiet             do not print informations while de-/installation"
+  echo "-V, --verbose           print detailed information during de-/installation"
   echo "-v, --version           print version info and exit"
   echo "-h, --help              print this help and exit"
   echo " "
