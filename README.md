@@ -4,18 +4,18 @@ A lightweight shell script to automatically run installer scripts and download/i
 
 ---
 
-## 📦 Features
+## 📌 Features
 
 - Runs all `*-installer.sh` installer scripts in the script directory
 - Downloads `.deb` assets from GitHub Releases (configurable via `github.conf`)
 - Installs and removes `.deb` packages automatically (architecture checks)
-- Supports `--quiet`, `--force`, `--install` and `--deinstall` options
+- Supports `--verbose`, `--quiet`, `--force`, `--install` and `--deinstall` options
 - Uses ETag/JSON caching to reduce GitHub API requests
 - Minimal external dependencies (standard shell tools + `jq`, `curl`, `dpkg`)
 
 ---
 
-## 🧪 Usage
+## 🚀 Usage
 
 Run the script from the repository (or script) directory:
 
@@ -29,6 +29,7 @@ Run the script from the repository (or script) directory:
 - `-d, --deinstall`   deinstall packages (installer scripts are invoked with `-d`)
 - `-f, --force`       force reinstall/remove (passed to apt calls)
 - `-q, --quiet`       reduce output (suitable for automation)
+- `-V, --verbose`     print detailed information during de/installation
 - `-v, --version`     print script version
 - `-h, --help`        show help
 
@@ -61,10 +62,10 @@ Each line contains `<owner>/<repo> [<personal_access_token>]`. Provide a token w
 
 - `--install`:
   - Calls `github_download` to fetch `.deb` assets from repositories listed in `github.conf`.
-  - Executes all `*-installer.sh` scripts (except the main script) found in the same directory.
   - Installs `.deb` files using `apt-get` after checking package architecture; incompatible packages are skipped.
+  - Executes all `*-installer.sh` scripts (except the main script) found in the same directory.
 - `--deinstall`:
-  - Invokes installer scripts with `-d` and removes installed `.deb` packages via `apt-get remove`.
+  - Removes installed `.deb` packages via `apt-get remove` and invokes installer scripts with `-d`.
 
 The script stores ETag/cache data in a local `.etag` directory to avoid unnecessary GitHub API calls.
 
@@ -81,11 +82,11 @@ The script expects the following programs on Debian-based systems:
 - `jq`
 - `file`, `find`, `sed`, `grep`, `stat`
 
-If required tools are missing the script will abort with an error message.
+If required tools are missing the script will get it trough apt-get.
 
 ---
 
-## ⚙️ Examples
+## 📜 Examples
 
 Install (from repository root):
 
