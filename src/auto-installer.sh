@@ -31,15 +31,15 @@ do
     shift # past argument
     ;;
     -i|--install)
-    [ "$CMD" == "" ] && CMD="install" || CMD="help"
+    [ -z "$CMD" ] && CMD="install" || CMD="help"
     shift # past argument
     ;;
     -d|--deinstall)
-    [ "$CMD" == "" ] && CMD="deinstall" || CMD="help"
+    [ -z "$CMD" ] && CMD="deinstall" || CMD="help"
     shift # past argument
     ;;
     -v|--version)
-    [ "$CMD" == "" ] && CMD="version" || CMD="help"
+    [ -z "$CMD" ] && CMD="version" || CMD="help"
     shift # past argument
     ;;
     -h|--help)
@@ -55,7 +55,7 @@ do
     ;;
   esac
 done
-[ "$CMD" == "" ] && CMD="help"
+[ -z "$CMD" ] && CMD="help"
 
 handle_error() {
   local exit_code=$1
@@ -84,15 +84,15 @@ do_check_start() {
       fi
     done
     if [ -n "$apt_res" ]; then
-      [ "$quiet" == "" ] && echo "--> run apt-get update ..."
-      if [ "$verbose" == "" ]; then
+      [ -z "$quiet" ] && echo "--> run apt-get update ..."
+      if [ -z "$verbose" ]; then
         apt-get -qy update >/dev/null 2>&1
       else
         apt-get -qy update
       fi
       [ $? -ne 0 ] && handle_error "1" "apt-get update error! abort."
-      [ "$quiet" == "" ] && echo "--> install missing prerequisites: ${apt_res% } ..."
-      if [ "$verbose" == "" ]; then
+      [ -z "$quiet" ] && echo "--> install missing prerequisites: ${apt_res% } ..."
+      if [ -z "$verbose" ]; then
         apt-get install -qq -- ${apt_res% } >/dev/null 2>&1
       else
         apt-get install -qq -- ${apt_res% }
@@ -143,7 +143,7 @@ gh_deb_download() {
   local etag_header=()
   [[ -f "$etag_file" ]] && etag_header=(-H "If-None-Match: $(cat "$etag_file")")
   local code
-  [ "$quiet" == "" ] && echo "--> get github-releases info: $repo ..."
+  [ -z "$quiet" ] && echo "--> get github-releases info: $repo ..."
   code=$(curl -fs ${verbose:+-vS} \
       -D "$hdr" \
       -w "%{http_code}" \
@@ -196,7 +196,7 @@ gh_deb_download() {
       local cur_size
       cur_size=$(stat -c%s "$dest" 2>/dev/null || echo 0)
       if [[ "$size" -gt 0 && "$cur_size" -eq "$size" ]]; then
-        [ -z "$quiet" ] && echo "Skipping download (up-to-date): $repo"
+        [ -z "$quiet" ] && echo "Skipping download (up-to-date): $name"
         continue
       fi
     fi
@@ -234,6 +234,7 @@ github_download() {
 
 deb_setup() {
   local filetype
+  local deb_file
   local deb_pkg
   local deb_arch
   local deb_ver
@@ -245,8 +246,8 @@ deb_setup() {
   test=($(find "$SCRIPT_DIR" -maxdepth 1 -type f -name "*.deb" 2>/dev/null))
   if [ "${#test[@]}" != "0" ]; then
     if [ "$1" == "" ]; then
-      [ "$quiet" == "" ] && echo "--> run apt-get update ..."
-      if [ "$verbose" == "" ]; then
+      [ -z "$quiet" ] && echo "--> run apt-get update ..."
+      if [ -z "$verbose" ]; then
         apt-get -qy update >/dev/null 2>&1
       else
         apt-get -qy update
@@ -266,7 +267,7 @@ deb_setup() {
         elif [ "$deb_arch" = "$SYS_ARCH" ] || [ "$deb_arch" = "all" ]; then
           if [[ -n "$force" ]] && [[ -z "$1" ]]; then
             [ -z "$quiet" ] && echo "--> force install: $deb_file ..."
-            if [ "$verbose" == "" ]; then
+            if [ -z "$verbose" ]; then
               apt-get install -qq --reinstall --allow-downgrades -- "$entry" >/dev/null 2>&1
             else
               apt-get install -qq --reinstall --allow-downgrades -- "$entry"
@@ -274,7 +275,7 @@ deb_setup() {
             [ $? -ne 0 ] && handle_error "1" "install error: $deb_file ! abort."
           elif [[ -n "$force" ]] && [ "$1" == "-d" ]; then
             [ -z "$quiet" ] && echo "--> force deinstall: $deb_file ..."
-            if [ "$verbose" == "" ]; then
+            if [ -z "$verbose" ]; then
               apt-get remove -qq -- "$deb_pkg" >/dev/null 2>&1
             else
               apt-get remove -qq -- "$deb_pkg"
@@ -284,7 +285,7 @@ deb_setup() {
             [ -z "$quiet" ] && echo "Skipping installation (up-to-date): $deb_file"
           elif ( [[ -z "$inst_ver" ]] || dpkg --compare-versions "$deb_ver" gt "$inst_ver" ) && [[ -z "$1" ]]; then
             [ -z "$quiet" ] && echo "--> install: $deb_file ..."
-            if [ "$verbose" == "" ]; then
+            if [ -z "$verbose" ]; then
               apt-get install -qq -- "$entry" >/dev/null 2>&1
             else
               apt-get install -qq -- "$entry"
@@ -294,7 +295,7 @@ deb_setup() {
             [ -z "$quiet" ] && echo "Skipping (not installed): $deb_file"
           elif [[ -n "$inst_ver" ]] && [ "$1" == "-d" ]; then
             [ -z "$quiet" ] && echo "--> deinstall: $deb_file ..."
-            if [ "$verbose" == "" ]; then
+            if [ -z "$verbose" ]; then
               apt-get remove -qq -- "$deb_pkg" >/dev/null 2>&1
             else
               apt-get remove -qq -- "$deb_pkg"
