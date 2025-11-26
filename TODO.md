@@ -1,3 +1,4 @@
 # TODO
 
-- [x] Test
+- [x] add version tag for downloading repos
+- [ ] Test

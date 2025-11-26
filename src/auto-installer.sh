@@ -6,7 +6,7 @@
 ##############################################
 
 SCRIPT_TITLE="auto-installer"
-SCRIPT_VERSION="1.1"
+SCRIPT_VERSION="1.2"
 SCRIPT_PATH="$(readlink -f "$0")"
 SCRIPT_NAME="$(basename "$SCRIPT_PATH")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
@@ -130,12 +130,14 @@ scripts_setup() {
 
 gh_deb_download() {
   local repo="$1"
-  local token="$2"
+  local tag="$2"
+  local token="$3"
   local api_base="https://api.github.com"
   local release_json
   local etag_dir="$SCRIPT_DIR/.etag"
   mkdir -p "$etag_dir"
-  local base="$(echo -n "$repo" | tr '/' '_')"
+  local safe_tag="${tag//[\/:]/_}"
+  local base="$(echo -n "$repo" | tr '/' '_')${safe_tag:+_}$safe_tag"
   local etag_file="$etag_dir/$base.etag"
   local cache_json="$etag_dir/$base.json"
   local hdr="$(mktemp)"
@@ -143,7 +145,14 @@ gh_deb_download() {
   local etag_header=()
   [[ -f "$etag_file" ]] && etag_header=(-H "If-None-Match: $(cat "$etag_file")")
   local code
-  [ -z "$quiet" ] && echo "--> get github-releases info: $repo ..."
+  #
+  local release_url
+  if [[ -n "$tag" ]]; then
+    release_url="$api_base/repos/$repo/releases/tags/$tag"
+  else
+    release_url="$api_base/repos/$repo/releases/latest"
+  fi
+  [ -z "$quiet" ] && echo "--> get github-releases info: $repo${tag:+@$tag} ..."
   code=$(curl -fs ${verbose:+-vS} \
       -D "$hdr" \
       -w "%{http_code}" \
@@ -153,7 +162,7 @@ gh_deb_download() {
       -H "X-GitHub-Api-Version: 2022-11-28" \
       ${token:+-H} ${token:+"Authorization: Bearer $token"} \
       "${etag_header[@]}" \
-      "$api_base/repos/$repo/releases/latest")
+      "$release_url")
   if [[ "$code" == "304" ]]; then
     rm -f "$hdr" "$body"
     if [[ -f "$cache_json" ]]; then
@@ -164,7 +173,7 @@ gh_deb_download() {
         -H "Accept: application/vnd.github+json" \
         -H "X-GitHub-Api-Version: 2022-11-28" \
         ${token:+-H} ${token:+"Authorization: Bearer $token"} \
-        "$api_base/repos/$repo/releases/latest")" || handle_error "1" "Could not receive release for repo $repo"
+        "$release_url")" || handle_error "1" "Could not receive release for repo $repo${tag:+@$tag}"
       echo "$release_json" > "$cache_json"
     fi
   else
@@ -183,7 +192,7 @@ gh_deb_download() {
     printf "%s\n" "$release_json" |
     jq -r '.assets[]? | select(.name|endswith(".deb")) | "\(.id)\t\(.name)\t\(.browser_download_url // "")\t\(.size // 0)"'
   )
-  [[ ${#asset_lines[@]} -eq 0 ]] && handle_error "1" "Could not find any .deb-assets in repo $repo"
+  [[ ${#asset_lines[@]} -eq 0 ]] && handle_error "1" "Could not find any .deb-assets in repo $repo${tag:+@$tag}"
   for line in "${asset_lines[@]}"; do
     local id="${line%%$'\t'*}"
     local rest="${line#*$'\t'}"
@@ -196,11 +205,11 @@ gh_deb_download() {
       local cur_size
       cur_size=$(stat -c%s "$dest" 2>/dev/null || echo 0)
       if [[ "$size" -gt 0 && "$cur_size" -eq "$size" ]]; then
-        [ -z "$quiet" ] && echo "Skipping download (up-to-date): $name"
+        [ -z "$quiet" ] && echo "Skipping download (up-to-date): $repo${tag:+@$tag} → $name"
         continue
       fi
     fi
-    [ -z "$quiet" ] && echo "--> Download: $repo → $name"
+    [ -z "$quiet" ] && echo "--> Download: $repo${tag:+@$tag} → $name ..."
     if [[ -n "$url" ]] && curl -fsL ${verbose:+-vS} \
        -H "User-Agent: $SCRIPT_TITLE/$SCRIPT_VERSION" \
        "$url" -o "$dest"; then
@@ -212,23 +221,33 @@ gh_deb_download() {
       -H "X-GitHub-Api-Version: 2022-11-28" \
       ${token:+-H} ${token:+"Authorization: Bearer $token"} \
       "$api_base/repos/$repo/releases/assets/$id" \
-      -o "$dest" || handle_error "1" "Download error: $name"
+      -o "$dest" || handle_error "1" "Download error: $repo${tag:+@$tag} → $name"
   done
 }
 
 github_download() {
+  local repo_raw
   local repo
+  local tag
   local token
   local conf_file="$SCRIPT_DIR/github.conf"
-  [[ ! -f "$conf_file" ]] && return 0
+  [[ ! -e "$conf_file" ]] && return 0
   while IFS= read -r line; do
     line="${line%%#*}"
     line="$(echo "$line" | xargs)"
     [[ -z "$line" ]] && continue
-    repo=$(awk '{print $1}' <<< "$line")
+    repo_raw=$(awk '{print $1}' <<< "$line")
+    if [[ "$repo_raw" == *[@:]* ]]; then
+      repo="${repo_raw%%[@:]*}"
+      tag="${repo_raw#"$repo"}"
+      tag="${tag:1}"
+    else
+      repo="$repo_raw"
+      tag=""
+    fi
     token=$(awk '{print $2}' <<< "$line")
     [[ -z "$repo" ]] && continue
-    gh_deb_download "$repo" "$token"
+    gh_deb_download "$repo" "$tag" "$token"
   done < "$conf_file"
 }
 

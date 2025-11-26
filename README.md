@@ -48,8 +48,7 @@ Run the script from the repository (or script) directory:
 An optional `github.conf` file can be placed next to the script. Format:
 
 ```properties
-#{owner/repo} {personal_access_token,optional}
-#{owner/repo2} {personal_access_token,optional}
+<github_user>/<github_repository>[@<github_release_tag>] [<github_pat>]
 
 ```
 
@@ -58,9 +57,12 @@ Example:
 ```properties
 aragon25/my-deb-repo
 someuser/another-repo ghp_XXXXXXXXXXXXXXXXXXXX
+someuser/test-repo@v1.0 ghp_XXXXXXXXXXXXXXXXXXXX
 ```
 
-Each line contains `<owner>/<repo> [<personal_access_token>]`. Provide a token when needed (private releases or to raise rate limits).
+Each line contains `<owner>/<repo>[@<release_tag>] [<personal_access_token>]`.
+Add a release tag to download a selected release instead the latest. 
+Provide a token when needed (private releases or to raise rate limits).
 
 ---
 
@@ -122,4 +124,4 @@ sudo ./src/auto-installer.sh --deinstall
 
 - "This script can only run with Superuser privileges!": run the script with `sudo`.
 - "This script is only supported on Debian-based systems.": the script is designed for Debian/Ubuntu/Raspbian.
-- GitHub download issues: verify `github.conf`, tokens, and API rate limits.
+- GitHub download issues: verify `github.conf`, tags, tokens, and API rate limits.
