@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1] - 2025-11-26
+
+### Added
+- verbose mode
+- preinst.sh/postinst.sh and prerm.sh/postrm.sh scripts
+
+### Changed
+- less output in normal mode
+
+### Fixed
+- quiet mode is now really quiet
+
+### Removed
+- '-installer.sh' scripts support
+
 ## [1.0] - 2025-11-25
 
 ### Added

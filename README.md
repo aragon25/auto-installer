@@ -1,21 +1,27 @@
 ﻿# auto-installer
 
-A lightweight shell script to automatically run installer scripts and download/install `.deb` packages from GitHub Releases. The script looks for files in the same directory, executes `*-installer.sh` scripts (except itself) and installs any `.deb` files found.
+A lightweight shell script to automatically run installer scripts and install or deinstall '.deb' packages from the script directory and/or GitHub Releases.
+
+The script looks for files in the same directory, then:
+- run '*preinst.sh'/'*prerm.sh' scripts
+- download '.deb' files from GitHub Releases (from 'github.conf')
+- de-/install '.deb' files found in the script directory
+- run '*postinst.sh'/'*postrm.sh' scripts
 
 ---
 
-## 📦 Features
+## 📌 Features
 
-- Runs all `*-installer.sh` installer scripts in the script directory
+- Runs installer scripts in the script directory before and after Package de-/installation
 - Downloads `.deb` assets from GitHub Releases (configurable via `github.conf`)
 - Installs and removes `.deb` packages automatically (architecture checks)
-- Supports `--quiet`, `--force`, `--install` and `--deinstall` options
+- Supports `--verbose`, `--quiet`, `--force`, `--install` and `--deinstall` options
 - Uses ETag/JSON caching to reduce GitHub API requests
 - Minimal external dependencies (standard shell tools + `jq`, `curl`, `dpkg`)
 
 ---
 
-## 🧪 Usage
+## 🚀 Usage
 
 Run the script from the repository (or script) directory:
 
@@ -25,10 +31,11 @@ Run the script from the repository (or script) directory:
 
 ### Options
 
-- `-i, --install`     run all `*-installer.sh` scripts and install `.deb` packages
-- `-d, --deinstall`   deinstall packages (installer scripts are invoked with `-d`)
-- `-f, --force`       force reinstall/remove (passed to apt calls)
-- `-q, --quiet`       reduce output (suitable for automation)
+- `-i, --install`     run scripts and install all packages
+- `-d, --deinstall`   run scripts and deinstall all packages
+- `-f, --force`       force deinstall or reinstall packages
+- `-q, --quiet`       do not print informations while de-/installation
+- `-V, --verbose`     print detailed information during de-/installation
 - `-v, --version`     print script version
 - `-h, --help`        show help
 
@@ -60,11 +67,15 @@ Each line contains `<owner>/<repo> [<personal_access_token>]`. Provide a token w
 ## 📝 Behavior
 
 - `--install`:
+  - Executes all `*preinst.sh` scripts found in the same directory.
   - Calls `github_download` to fetch `.deb` assets from repositories listed in `github.conf`.
-  - Executes all `*-installer.sh` scripts (except the main script) found in the same directory.
   - Installs `.deb` files using `apt-get` after checking package architecture; incompatible packages are skipped.
+  - Executes all `*postinst.sh` scripts found in the same directory.
 - `--deinstall`:
-  - Invokes installer scripts with `-d` and removes installed `.deb` packages via `apt-get remove`.
+  - Executes all `*prerm.sh` scripts found in the same directory.
+  - Calls `github_download` to fetch `.deb` assets from repositories listed in `github.conf`.
+  - Removes installed `.deb` packages via `apt-get remove`.
+  - Executes all `*postrm.sh` scripts found in the same directory.
 
 The script stores ETag/cache data in a local `.etag` directory to avoid unnecessary GitHub API calls.
 
@@ -81,11 +92,11 @@ The script expects the following programs on Debian-based systems:
 - `jq`
 - `file`, `find`, `sed`, `grep`, `stat`
 
-If required tools are missing the script will abort with an error message.
+If required tools are missing the script will get it trough apt-get.
 
 ---
 
-## ⚙️ Examples
+## 📜 Examples
 
 Install (from repository root):
 

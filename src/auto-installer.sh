@@ -6,23 +6,28 @@
 ##############################################
 
 SCRIPT_TITLE="auto-installer"
-SCRIPT_VERSION="1.0"
-
+SCRIPT_VERSION="1.1"
 SCRIPT_PATH="$(readlink -f "$0")"
 SCRIPT_NAME="$(basename "$SCRIPT_PATH")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 SYS_ARCH=$(dpkg --print-architecture)
 PREREQS=( dpkg sed jq curl )
+export LC_ALL=C
+export LANG=C
 
 for i in "$@"
 do
   case $i in
+    -V|--verbose)
+    verbose="--verbose"
+    shift # past argument
+    ;;
     -q|--quiet)
-    quiet="-q"
+    quiet="--quiet"
     shift # past argument
     ;;
     -f|--force)
-    force="-f"
+    force="--force"
     shift # past argument
     ;;
     -i|--install)
@@ -74,11 +79,26 @@ do_check_start() {
   IFS=$' '
   if [ "${#PREREQS[@]}" -ne 0 ]; then
     for apt in "${PREREQS[@]}"; do
-      if ! dpkg -s "$apt" &>/dev/null || ! dpkg -s "$apt" | grep -q "Status: install ok installed"; then
-        apt_res+="${apt}, "
+      if ! { dpkg -s "$apt" 2>/dev/null | grep -q '^Status: install ok installed'; }; then
+        apt_res+="${apt} "
       fi
     done
-    [ -n "$apt_res" ] && handle_error "1" "Not installed APT packages: ${apt_res%, }! Cannot continue with this script!"
+    if [ -n "$apt_res" ]; then
+      [ "$quiet" == "" ] && echo "--> run apt-get update ..."
+      if [ "$verbose" == "" ]; then
+        apt-get -qy update >/dev/null 2>&1
+      else
+        apt-get -qy update
+      fi
+      [ $? -ne 0 ] && handle_error "1" "apt-get update error! abort."
+      [ "$quiet" == "" ] && echo "--> install missing prerequisites: ${apt_res% } ..."
+      if [ "$verbose" == "" ]; then
+        apt-get install -qq -- ${apt_res% } >/dev/null 2>&1
+      else
+        apt-get install -qq -- ${apt_res% }
+      fi
+      [ $? -ne 0 ] && handle_error "1" "Could not install prerequisites: ${apt_res% }! abort."
+    fi
   fi
   unset IFS
 }
@@ -89,7 +109,7 @@ scripts_setup() {
   local test
   local old_IFS="$IFS"
   IFS=$'\n'
-  test=($(find "$SCRIPT_DIR" -maxdepth 1 -type f -name "*-installer.sh" 2>/dev/null))
+  test=($(find "$SCRIPT_DIR" -maxdepth 1 -type f -name "*$1.sh" 2>/dev/null))
   if [ "${#test[@]}" != "0" ]; then
     for entry in "${test[@]}"; do
       [[ "$entry" -ef "$SCRIPT_PATH" ]] && continue
@@ -97,11 +117,11 @@ scripts_setup() {
       if [[ "$filetype" =~ "text" ]]
       then
         sed -i 's/\r$//g' "$entry" >/dev/null 2>&1
-        filetype="$(file -b --mime-type ""$entry"" 2>/dev/null)"
+        filetype="$(file -b --mime-type "$entry" 2>/dev/null)"
       fi
       if [[ "$filetype" =~ "executable" ]] || [[ "$filetype" =~ "script" ]] || [[ "$entry" == *".sh" ]]; then
         chmod -f 755 "$entry"
-        "$entry" $1 $quiet $force
+        "$entry" $quiet $force $verbose
       fi
     done
   fi
@@ -123,7 +143,8 @@ gh_deb_download() {
   local etag_header=()
   [[ -f "$etag_file" ]] && etag_header=(-H "If-None-Match: $(cat "$etag_file")")
   local code
-  code=$(curl -sS \
+  [ "$quiet" == "" ] && echo "--> get github-releases info: $repo ..."
+  code=$(curl -fs ${verbose:+-vS} \
       -D "$hdr" \
       -w "%{http_code}" \
       -o "$body" \
@@ -138,12 +159,13 @@ gh_deb_download() {
     if [[ -f "$cache_json" ]]; then
       release_json="$(cat "$cache_json")"
     else
-      release_json="$(curl -fsL \
+      release_json="$(curl -fsL ${verbose:+-vS} \
         -H "User-Agent: $SCRIPT_TITLE/$SCRIPT_VERSION" \
         -H "Accept: application/vnd.github+json" \
         -H "X-GitHub-Api-Version: 2022-11-28" \
         ${token:+-H} ${token:+"Authorization: Bearer $token"} \
         "$api_base/repos/$repo/releases/latest")" || handle_error "1" "Could not receive release for repo $repo"
+      echo "$release_json" > "$cache_json"
     fi
   else
     if [[ "$code" != "200" ]]; then
@@ -170,21 +192,21 @@ gh_deb_download() {
     local url="${rest%%$'\t'*}"
     local size="${rest#*$'\t'}"
     local dest="$SCRIPT_DIR/$name"
-    if [[ -f "$dest" ]]; then
+    if [[ -f "$dest" ]] && [[ -z "$force" ]]; then
       local cur_size
       cur_size=$(stat -c%s "$dest" 2>/dev/null || echo 0)
       if [[ "$size" -gt 0 && "$cur_size" -eq "$size" ]]; then
-        [[ -z "$quiet" ]] && echo "Skipping (up-to-date): $repo → $name"
+        [ -z "$quiet" ] && echo "Skipping download (up-to-date): $repo"
         continue
       fi
     fi
-    [[ -z "$quiet" ]] && echo "Download: $repo → $name"
-    if [[ -n "$url" ]] && curl -fsL \
+    [ -z "$quiet" ] && echo "--> Download: $repo → $name"
+    if [[ -n "$url" ]] && curl -fsL ${verbose:+-vS} \
        -H "User-Agent: $SCRIPT_TITLE/$SCRIPT_VERSION" \
        "$url" -o "$dest"; then
       continue
     fi
-    curl -fsL \
+    curl -fsL ${verbose:+-vS} \
       -H "User-Agent: $SCRIPT_TITLE/$SCRIPT_VERSION" \
       -H "Accept: application/octet-stream" \
       -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -212,39 +234,75 @@ github_download() {
 
 deb_setup() {
   local filetype
-  local pkg_arch
+  local deb_pkg
+  local deb_arch
+  local deb_ver
+  local inst_ver
   local entry
   local test
   local old_IFS="$IFS"
   IFS=$'\n'
   test=($(find "$SCRIPT_DIR" -maxdepth 1 -type f -name "*.deb" 2>/dev/null))
   if [ "${#test[@]}" != "0" ]; then
-    local apt_opts=()
     if [ "$1" == "" ]; then
-      [ "$force" != "" ] && apt_opts=( --reinstall --allow-downgrades )
-      [ "$quiet" == "" ] && echo -n "--> run apt-get update ... "
-      apt-get -qy update >/dev/null 2>&1
+      [ "$quiet" == "" ] && echo "--> run apt-get update ..."
+      if [ "$verbose" == "" ]; then
+        apt-get -qy update >/dev/null 2>&1
+      else
+        apt-get -qy update
+      fi
       [ $? -ne 0 ] && handle_error "1" "apt-get update error! abort."
-      [ "$quiet" == "" ] && echo "done."
     fi
     for entry in "${test[@]}"; do
       filetype=$(file -b --mime-type "$entry" 2>/dev/null)
-      if [[ "$filetype" =~ "package" ]]; then
-        pkg_arch=$(dpkg-deb -f "$entry" Architecture 2>/dev/null)
-        if [ "$pkg_arch" = "$SYS_ARCH" ] || [ "$pkg_arch" = "all" ]; then
-          if [ "$quiet" != "" ] && [ "$1" == "" ]; then
-            apt-get install -qq "${apt_opts[@]}" "$entry" >/dev/null 2>&1
-            [ $? -ne 0 ] && handle_error "1" "install error: $entry ! abort."
-          elif [ "$1" == "" ]; then
-            apt-get install -qq "${apt_opts[@]}" "$entry"
-            [ $? -ne 0 ] && handle_error "1" "install error: $entry ! abort."
-          elif [ "$quiet" != "" ] && [ "$1" == "-d" ]; then
-            apt-get remove -qq "$(dpkg-deb -W "$entry" | cut -d$'\t' -f1)" >/dev/null 2>&1
-          elif [ "$1" == "-d" ]; then
-            apt-get remove -qq "$(dpkg-deb -W "$entry" | cut -d$'\t' -f1)"
+      if [[ "$filetype" =~ "package" ]] || [[ "${entry##*.}" == "deb" ]]; then
+        deb_file=$(basename "$entry")
+        deb_pkg=$(dpkg-deb -f "$entry" Package 2>/dev/null)
+        deb_arch=$(dpkg-deb -f "$entry" Architecture 2>/dev/null)
+        deb_ver=$(dpkg-deb -f "$entry" Version 2>/dev/null)
+        inst_ver=$(dpkg -s -- "$deb_pkg" 2>/dev/null | awk '/^Version:/{print $2}')
+        if [[ -z "$deb_pkg" ]] || [[ -z "$deb_arch" ]] || [[ -z "$deb_ver" ]]; then
+          handle_error "1" "Package error: $deb_file (missing Package/Architecture/Version) ! abort."
+        elif [ "$deb_arch" = "$SYS_ARCH" ] || [ "$deb_arch" = "all" ]; then
+          if [[ -n "$force" ]] && [[ -z "$1" ]]; then
+            [ -z "$quiet" ] && echo "--> force install: $deb_file ..."
+            if [ "$verbose" == "" ]; then
+              apt-get install -qq --reinstall --allow-downgrades -- "$entry" >/dev/null 2>&1
+            else
+              apt-get install -qq --reinstall --allow-downgrades -- "$entry"
+            fi
+            [ $? -ne 0 ] && handle_error "1" "install error: $deb_file ! abort."
+          elif [[ -n "$force" ]] && [ "$1" == "-d" ]; then
+            [ -z "$quiet" ] && echo "--> force deinstall: $deb_file ..."
+            if [ "$verbose" == "" ]; then
+              apt-get remove -qq -- "$deb_pkg" >/dev/null 2>&1
+            else
+              apt-get remove -qq -- "$deb_pkg"
+            fi
+            [ $? -ne 0 ] && handle_error "1" "deinstall error: $deb_file ! abort."
+          elif [[ -n "$inst_ver" ]] && dpkg --compare-versions "$deb_ver" eq "$inst_ver" && [[ -z "$1" ]]; then
+            [ -z "$quiet" ] && echo "Skipping installation (up-to-date): $deb_file"
+          elif ( [[ -z "$inst_ver" ]] || dpkg --compare-versions "$deb_ver" gt "$inst_ver" ) && [[ -z "$1" ]]; then
+            [ -z "$quiet" ] && echo "--> install: $deb_file ..."
+            if [ "$verbose" == "" ]; then
+              apt-get install -qq -- "$entry" >/dev/null 2>&1
+            else
+              apt-get install -qq -- "$entry"
+            fi
+            [ $? -ne 0 ] && handle_error "1" "install error: $deb_file ! abort."
+          elif [[ -z "$inst_ver" ]] && [ "$1" == "-d" ]; then
+            [ -z "$quiet" ] && echo "Skipping (not installed): $deb_file"
+          elif [[ -n "$inst_ver" ]] && [ "$1" == "-d" ]; then
+            [ -z "$quiet" ] && echo "--> deinstall: $deb_file ..."
+            if [ "$verbose" == "" ]; then
+              apt-get remove -qq -- "$deb_pkg" >/dev/null 2>&1
+            else
+              apt-get remove -qq -- "$deb_pkg"
+            fi
+            [ $? -ne 0 ] && handle_error "1" "deinstall error: $deb_file ! abort."
           fi
         else
-          [ -z "$quiet" ] && echo "Skipping $entry (arch: $pkg_arch, needed: $SYS_ARCH)"
+          [ -z "$quiet" ] && echo "Skipping $deb_file (arch: $deb_arch, needed: $SYS_ARCH)"
         fi
       fi
     done
@@ -253,15 +311,17 @@ deb_setup() {
 }
 
 function cmd_install() {
+  scripts_setup preinst
   github_download
-  scripts_setup
   deb_setup
+  scripts_setup postinst
 }
 
 function cmd_deinstall() {
+  scripts_setup prerm
   github_download
-  scripts_setup -d
   deb_setup -d
+  scripts_setup postrm
 }
 
 function cmd_print_version() {
@@ -273,15 +333,19 @@ function cmd_print_help() {
   echo "$SCRIPT_TITLE v$SCRIPT_VERSION"
   echo " "
   echo "A lightweight shell script to automatically run installer"
-  echo "scripts and download/install '.deb' packages from GitHub Releases."
-  echo "The script looks for files in the same directory, executes"
-  echo "'*-installer.sh' scripts (except itself) and installs any"
-  echo "'.deb' files found."
+  echo "scripts and install or deinstall '.deb' packages from"
+  echo "the script directory and/or GitHub Releases."
+  echo "The script looks for files in the same directory, then:"
+  echo "- run '*preinst.sh'/'*prerm.sh' scripts"
+  echo "- download '.deb' files from GitHub Releases (from 'github.conf')"
+  echo "- de-/install '.deb' files found in the script directory"
+  echo "- run '*postinst.sh'/'*postrm.sh' scripts"
   echo " "
-  echo "-i, --install           install all scripts and packages"
-  echo "-d, --deinstall         deinstall all scripts and packages"
-  echo "-f, --force             force deinstall or reinstall all scripts and packages"
-  echo "-q, --quiet             do not print informations while de/installation"
+  echo "-i, --install           run scripts and install all packages"
+  echo "-d, --deinstall         run scripts and deinstall all packages"
+  echo "-f, --force             force deinstall or reinstall packages"
+  echo "-q, --quiet             do not print informations while de-/installation"
+  echo "-V, --verbose           print detailed information during de-/installation"
   echo "-v, --version           print version info and exit"
   echo "-h, --help              print this help and exit"
   echo " "
