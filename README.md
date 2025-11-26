@@ -1,6 +1,7 @@
 ﻿# auto-installer
 
-A lightweight shell script to automatically run installer scripts and install or deinstall '.deb' packages from the script directory and/or GitHub Releases. The script looks for files in the same directory, then:
+A lightweight shell script to automatically run installer scripts and install or deinstall '.deb' packages from the script directory and/or GitHub Releases. 
+The script looks for files in the same directory, then:
 - run '*preinst.sh'/'*prerm.sh' scripts
 - download '.deb' files from GitHub Releases (from 'github.conf')
 - de-/install '.deb' files found in the script directory
