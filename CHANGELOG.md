@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.2] - 2025-11-29
+## [1.2] - 2025-11-30
 
 ### Added
 - optional release tag to github.conf to download specific release
