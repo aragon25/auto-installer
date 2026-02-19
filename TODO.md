@@ -1,4 +1,4 @@
 # TODO
 
-- [ ] installationsstatus prüfen, nicht nur version. (sonst bei remove statt purge: keine neuinstallation)
+- [x] check install status not just installed version (else at package removed state: no installation)
 - [ ] Test
