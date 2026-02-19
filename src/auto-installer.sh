@@ -561,7 +561,7 @@ deb_setup() {
               apt-get remove -qq -- "$deb_pkg"
             fi
             [ $? -ne 0 ] && handle_error "1" "deinstall error: $deb_file ! abort."
-          elif [[ "$inst_stat" == "install" ]] && [[ -n "$inst_ver" ]] && dpkg --compare-versions "$deb_ver" eq "$inst_ver" && [[ -z "$1" ]]; then
+          elif [[ "$inst_stat" == "install" ]] && [[ -n "$inst_ver" ]] && dpkg --compare-versions "$deb_ver" le "$inst_ver" && [[ -z "$1" ]]; then
             [ -z "$quiet" ] && echo "Skipping installation (up-to-date): $deb_file"
           elif ( [[ -z "$inst_ver" ]] || [[ "$inst_stat" != "install" ]] || dpkg --compare-versions "$deb_ver" gt "$inst_ver" ) && [[ -z "$1" ]]; then
             [ -z "$quiet" ] && echo "--> install: $deb_file ..."
