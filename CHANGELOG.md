@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3] - 2026-02-19
+
+### Added
+- check install status not just installed version
+
 ## [1.2] - 2025-11-30
 
 ### Added
